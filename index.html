@@ -1,0 +1,1851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>War Simulation</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #2e2e2e;
+            color: white;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        #map-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+ 
+        #world-map {
+            width: 100%;
+            height: 100%;
+            background: url('https://www.priorityengineering.co.uk/wp-content/uploads/2021/06/worldmap_countries_blue_on_dark-scaled.jpg') no-repeat center;
+            background-size: cover;
+        }
+        .country {
+            position: absolute;
+            cursor: pointer;
+            border: 2px solid lime;
+            border-radius: 50%;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+    
+        #log-container {
+            display: flex; /* Use flexbox to align log and filters side by side */
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px; /* Reduced padding */
+            border-radius: 10px;
+            max-width: 400px; /* Adjust width as needed */
+        }
+        
+        #filter-container {
+            display: flex;
+            flex-direction: column; /* Stack filter buttons vertically */
+            margin-right: 500px; /* Space between filters and log */
+            align-items: flex-start; /* Align filter buttons to the left */
+        }
+        
+        #log {
+            overflow-y: auto;
+            height: 200px;
+            flex: 1; /* Allow log to take available space */
+        }
+        
+        .filter-button {
+            margin: 2px 0; /* Reduced margin */
+            padding: 3px 6px; /* Smaller padding */
+            background: #007bff;
+            border: none;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+            font-size: 12px; /* Smaller font size */
+        }
+        
+        .filter-button:hover {
+            background: #0056b3;
+        }
+        .country:hover {
+            border-color: yellow;
+            transform: scale(1.2);
+        }
+
+        .selected {
+            border-color: red !important;
+        }
+
+        .troop-marker {
+            position: absolute;
+            background-color: rgba(255, 0, 0, 0.7);
+            border-radius: 50%;
+            color: white;
+            text-align: center;
+            line-height: 20px;
+            font-size: 12px;
+            transition: transform 0.5s ease-in-out, opacity 0.5s ease-in-out; /* Add opacity transition */
+            opacity: 0; /* Start invisible */
+        }
+        
+        .troop-marker.visible {
+            opacity: 1; /* Make visible */
+        }
+        
+        .combat-marker {
+            position: absolute; /* Allows positioning on the map */
+            background-color: rgba(255, 255, 0, 0.7); /* Yellow color for combat indicator */
+            border-radius: 50%; /* Make it circular */
+            width: 15px; /* Width of the combat marker */
+            height: 15px; /* Height of the combat marker */
+            animation: flash 0.5s infinite alternate; /* Flashing effect */
+            z-index: 20; /* Ensure it appears above troop markers */
+        }
+        #modal {
+            display: none; /* Hidden by default */
+            position: fixed;
+            z-index: 1000;
+            left: 0; /* Align to the left */
+            top: 0; /* Align to the top */
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto;
+        }
+        
+        #modal-content {
+            background-color: #2e2e2e; /* Background color for the modal content */
+            margin: 20px; /* Add some margin */
+            padding: 20px;
+            border: 1px solid #888;
+            width: 300px; /* Set a fixed width */
+            color: white;
+            position: absolute; /* Position it absolutely */
+            left: 10px; /* Position from the left */
+            top: 10px; /* Position from the top */
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        
+        .close:hover,
+        .close:focus {
+            color: white;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        @keyframes flash {
+            0% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+        @keyframes explosion {
+            0% {
+                transform: scale(0);
+                opacity: 1;
+            }
+            50% {
+                transform: scale(1.5);
+                opacity: 0.7;
+            }
+            100% {
+                transform: scale(2);
+                opacity: 0;
+            }
+        }
+        
+        @keyframes shockwave {
+            0% {
+                transform: scale(0);
+                opacity: 1;
+            }
+            100% {
+                transform: scale(3);
+                opacity: 0;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            #log-container {
+                flex-direction: column; /* Stack log and filters vertically */
+                margin-right: 0; /* Remove margin */
+                max-width: 100%; /* Full width on small screens */
+            }
+        
+            #info-panel {
+                max-width: 100%; /* Full width on small screens */
+                padding: 10px; /* Reduce padding */
+            }
+        
+            #world-map {
+                background-size: contain; /* Adjust map size */
+            }
+        
+            .country {
+                width: 10px; /* Smaller country markers */
+                height: 10px;
+            }
+        }
+        .smoke {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.5);
+            animation: smoke 2s forwards;
+            pointer-events: none; /* Prevent interaction */
+            opacity: 0; /* Start invisible */
+        }
+        
+        @keyframes smoke {
+            0% {
+                transform: translateY(0) scale(1);
+                opacity: 1; /* Fully visible at start */
+            }
+            100% {
+                transform: translateY(-100px) scale(1.5);
+                opacity: 0; /* Fade out */
+            }
+        }
+        .fallout {
+            position: absolute;
+            background: radial-gradient(circle, rgba(255,69,0,0.8) 0%, rgba(255,69,0,0.5) 50%, rgba(255,69,0,0) 100%);
+            border-radius: 50%;
+            pointer-events: none; /* Make sure it doesn't block interactions */
+            z-index: 9999; /* Ensure it appears on top */
+            opacity: 0.8;
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                opacity: 0.8;
+            }
+            50% {
+                transform: scale(1.1);
+                opacity: 0.6;
+            }
+            100% {
+                transform: scale(1);
+                opacity: 0.8;
+            }
+        }
+        
+        .explosion {
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(255, 0, 0, 0.8) 0%, rgba(255, 165, 0, 0.5) 50%, rgba(255, 255, 0, 0) 100%);
+            animation: explosion 1.5s forwards;
+            pointer-events: none; /* Prevent interaction */
+        }
+        
+        .shockwave {
+            position: absolute;
+            border-radius: 50%;
+            border: 5px solid rgba(255, 255, 255, 0.5);
+            animation: shockwave 1s forwards;
+            pointer-events: none; /* Prevent interaction */
+        }
+        
+       
+
+        #info-panel {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 300px;
+        }
+
+        #info-panel h2 {
+            margin: 0 0 10px;
+        }
+
+        #info-panel button {
+            margin-top: 10px;
+            padding: 10px 20px;
+            background: #007bff;
+            border: none;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        #info-panel button:hover {
+            background: #0056b3;
+        }
+
+        #actions {
+            margin-top: 10px;
+        }
+
+        #actions button {
+            margin: 5px 0;
+            padding: 10px 15px;
+            background: #28a745;
+            border: none;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        #actions button:hover {
+            background: #1e7e34;
+        }
+
+        #log {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 300px;
+            overflow-y: auto;
+            height: 200px;
+        }
+        .tooltip {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 5px;
+            border-radius: 5px;
+            display: none;
+            z-index: 100;
+            pointer-events: none; /* Prevent mouse events on the tooltip */
+        }
+        #log p {
+            margin: 0 0 5px;
+        }
+        .troop-marker {
+            transition: transform 0.5s ease-in-out;
+        }
+            .tooltip {
+                position: absolute;
+                background-color: rgba(0, 0, 0, 0.8);
+                color: white;
+                padding: 5px;
+                border-radius: 5px;
+                display: none;
+                z-index: 100;
+            }
+        </style>
+</head>
+<body>
+    <div id="map-container">
+        <div id="world-map">
+            <svg id="troop-path" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;">
+                <marker id="arrow" markerWidth="10" markerHeight="7" refX="5" refY="3.5" orient="auto">
+                    <polygon class="arrow" points="0 0, 10 3.5, 0 7" />
+                </marker>
+            </svg>
+            <div class="country" id="usa" style="top: 40%; left: 19%; width: 15px; height: 15px;"></div>
+ <div class="country" id="russia" style="top: 23%; left: 70%; width: 20px; height: 20px;"></div>
+            <div class="country" id="china" style="top: 44%; left: 75%; width: 15px; height: 15px;"></div>
+            <div class="country" id="germany" style="top: 32.5%; left: 49.5%; width: 15px; height: 15px;"></div>
+            <div class="country" id="france" style="top: 35.5%; left: 47.3%; width: 15px; height: 15px;"></div>
+            <div class="country" id="brazil" style="top: 70%; left: 32.5%; width: 15px; height: 15px;"></div>
+            <div class="country" id="india" style="top: 51%; left: 68%; width: 15px; height: 15px;"></div>
+            <div class="country" id="japan" style="top: 42%; left: 84%; width: 15px; height: 15px;"></div>
+<div class="country" id="uk" style="top: 30.5%; left: 46%; width: 15px; height: 15px;"></div>
+<div class="country" id="canada" style="top: 27%; left: 18%; width: 15px; height: 15px;"></div>
+<div class="country" id="australia" style="top: 78%; left: 83%; width: 15px; height: 15px;"></div>
+<div class="country" id="southAfrica" style="top: 81%; left: 53.3%; width: 15px; height: 15px;"></div>
+<div class="country" id="mexico" style="top: 49%; left: 18%; width: 15px; height: 15px;"></div>
+<div class="country" id="argentina" style="top: 83%; left: 28.8%; width: 15px; height: 15px;"></div>
+<div class="country" id="italy" style="top: 38%; left: 49.9%; width: 15px; height: 15px;"></div>
+<div class="country" id="spain" style="top: 40%; left: 45.5%; width: 15px; height: 15px;"></div>
+<div class="country" id="turkey" style="top: 41%; left: 56%; width: 15px; height: 15px;"></div>
+<div class="country" id="iran" style="top: 45%; left: 61%; width: 15px; height: 15px;"></div>
+<div class="country" id="egypt" style="top: 48%; left: 54.5%; width: 15px; height: 15px;"></div>
+<div class="country" id="saudiArabia" style="top: 49%; left: 58%; width: 15px; height: 15px;"></div>
+<div class="country" id="nigeria" style="top: 59%; left: 48.5%; width: 15px; height: 15px;"></div>
+<div class="country" id="philippines" style="top: 58%; left: 80%; width: 15px; height: 15px;"></div>
+<div class="country" id="vietnam" style="top: 52%; left: 75%; width: 15px; height: 15px;"></div>
+<div class="country" id="thailand" style="top: 55%; left: 74%; width: 15px; height: 15px;"></div>
+<div class="country" id="southKorea" style="top: 43%; left: 81%; width: 15px; height: 15px;"></div>
+<div class="country" id="newZealand" style="top: 89%; left: 93%; width: 15px; height: 15px;"></div>
+<div class="country" id="colombia" style="top: 62%; left: 26.5%; width: 15px; height: 15px;"></div>
+<div class="country" id="peru" style="top: 69%; left: 25.5%; width: 15px; height: 15px;"></div>
+<div class="country" id="malaysia" style="top: 62%; left: 75%; width: 15px; height: 15px;"></div>
+<div class="country" id="northKorea" style="top: 41%; left: 80.7%; width: 15px; height: 15px;"></div>
+<svg id="nuclear-strike-animation" style="position: absolute; width: 100%; height: 100%; pointer-events: none;"></svg>
+        </div>
+        <div id="info-panel">
+            <h2 id="country-name">Select a Country</h2>
+            <p id="country-details">Click on a country to see its details and control it.</p>
+            <button id="control-button" disabled>Control</button>
+            <button id="nuclear-strike" disabled>Nuclear Strike</button> <!-- New button -->
+            <div id="actions">
+                <button id="build-army" disabled>Build Army</button>
+                <button id="build-tanks" disabled>Build Tanks</button>
+<button id="build-air-support" disabled>Build Air Support</button>
+<button id="increase-production" disabled>Increase Production Rate</button>
+                <button id="develop-economy" disabled>Develop Economy</button>
+                <button id="diplomacy" disabled>Diplomacy</button>
+                <button id="form-alliance" disabled>Form Alliance</button>
+                <button id="move-troops" disabled>Move Troops</button>
+                <button id="declare-war" disabled>Declare War</button>
+                <button id="negotiate" disabled>Negotiate</button>
+            </div>
+        </div>
+        <div class="tooltip" id="tooltip"></div>
+        <div id="log-container">
+            <div id="filter-container">
+                <button id="filter-all" class="filter-button">All</button>
+                <button id="filter-moves" class="filter-button">Moves</button>
+                <button id="filter-wars" class="filter-button">Wars</button>
+                <button id="filter-alliances" class="filter-button">Alliances</button>
+                <button id="toggle-log" class="filter-button">Hide</button>
+            </div>
+            <div id="log">
+                <h2>Action Log</h2>
+                <!-- Log entries will be dynamically added here -->
+            </div>
+        </div><div id="modal">
+            <div id="modal-content">
+                <span class="close">&times;</span>
+                <h2>Nuclear Strike Results</h2>
+                <p id="modal-message"></p>
+            </div>
+        </div>
+<script>
+   
+    
+    document.querySelectorAll('.country').forEach(country => {
+        country.addEventListener('mouseenter', (event) => {
+            const countryId = country.id;
+            const tooltip = document.getElementById('tooltip');
+            tooltip.textContent = countryDescriptions[countryId]; // Set tooltip text
+            tooltip.style.display = 'block'; // Show tooltip
+            tooltip.style.left = `${event.pageX + 10}px`; // Position tooltip
+            tooltip.style.top = `${event.pageY + 10}px`;
+        });
+    
+        country.addEventListener('mousemove', (event) => {
+            const tooltip = document.getElementById('tooltip');
+            tooltip.style.left = `${event.pageX + 10}px`; // Update position
+            tooltip.style.top = `${event.pageY + 10}px`;
+        });
+    
+        country.addEventListener('mouseleave', () => {
+            const tooltip = document.getElementById('tooltip');
+            tooltip.style.display = 'none'; // Hide tooltip
+        });
+    });
+    const countries = {
+        usa: { 
+            name: "United States", 
+            resources: { food: 5000, oil: 4000, tech: 8000 }, 
+            troops: { infantry: 15000, tanks: 3000, airSupport: 2500, cavalry: 1000, artillery: 1000 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 3800,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 10, oil: 5, tech: 2 }, // Production rates
+            infrastructure: 1, // Infrastructure level
+            lastProduced: Date.now()
+        },
+        russia: { 
+            name: "Russia", 
+            resources: { food: 3000, oil: 6000, tech: 3000 }, 
+            troops: { infantry: 12000, tanks: 5000, airSupport: 1500, cavalry: 800, artillery: 1200 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 6400,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 8, oil: 6, tech: 1 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        china: { 
+            name: "China", 
+            resources: { food: 6000, oil: 3000, tech: 4000 }, 
+            troops: { infantry: 20000, tanks: 4000, airSupport: 2000, cavalry: 1500, artillery: 1500 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 320,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 12, oil: 4, tech: 3 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        germany: { 
+            name: "Germany", 
+            resources: { food: 1500, oil: 2000, tech: 5000 }, 
+            troops: { infantry: 3000, tanks: 800, airSupport: 500, cavalry: 300, artillery: 300 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 0,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 9, oil: 5, tech: 4 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        france: { 
+            name: "France", 
+            resources: { food: 2000, oil: 1500, tech: 4000 }, 
+            troops: { infantry: 2500, tanks: 600, airSupport: 400, cavalry: 200, artillery: 200 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 290,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 7, oil: 4, tech: 3 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        brazil: { 
+            name: "Brazil", 
+            resources: { food: 7000, oil: 2000, tech: 1000 }, 
+            troops: { infantry: 5000, tanks: 800, airSupport: 200, cavalry: 400, artillery: 300 }, 
+            allies: [], 
+            atWar: [],
+            nuclear: 0,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 10, oil: 3, tech: 2 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        india: { 
+            name: "India", 
+            resources: { food: 6000, oil: 1500, tech: 2500 }, 
+            troops: { infantry: 12000, tanks: 1500, airSupport: 800, cavalry: 1200, artillery: 800 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 160, // Estimated number of nuclear weapons
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+     production: { food: 11, oil: 4, tech: 2 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        japan: { 
+            name: "Japan", 
+            resources: { food: 2500, oil: 500, tech: 6000 }, 
+            troops: { infantry: 4000, tanks: 1000, airSupport: 800, cavalry: 300, artillery: 200 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 0,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 6, oil: 2, tech: 5 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        uk: { 
+            name: "United Kingdom", 
+            resources: { food: 2000, oil: 1500, tech: 5000 }, 
+            troops: { infantry: 3500, tanks: 1000, airSupport: 600, cavalry: 300, artillery: 300 }, 
+            allies: [], atWar: [], 
+            nuclear: 225,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 5, oil: 3, tech: 4 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        canada: { 
+            name: "Canada", 
+            resources: { food: 4000, oil: 2000, tech: 3000 }, 
+            troops: { infantry: 2000, tanks: 500, airSupport: 300, cavalry: 150, artillery: 200 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 0,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 9, oil: 4, tech: 3 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        australia: { 
+            name: "Australia", 
+            resources: { food: 3500, oil: 1500, tech: 2000 }, 
+            troops: { infantry: 2000, tanks: 400, airSupport: 250, cavalry: 150, artillery: 100 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 0,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 8, oil: 3, tech: 2 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        southAfrica: { 
+            name: "South Africa", 
+            resources: { food: 3000, oil: 1000, tech: 1000 }, 
+            troops: { infantry: 2000, tanks: 300, airSupport: 150, cavalry: 200, artillery: 100 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 0,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 7, oil: 2, tech: 1 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        mexico: { 
+            name: "Mexico", 
+            resources: { food: 4000, oil: 1000, tech: 800 }, 
+            troops: { infantry: 3000, tanks: 400, airSupport: 200, cavalry: 300, artillery: 150 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 0,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 6, oil: 2, tech: 2 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        argentina: { 
+            name: "Argentina", 
+            resources: { food: 4000, oil: 800, tech: 500 }, 
+            troops: { infantry: 2500, tanks: 300, airSupport: 150, cavalry: 200, artillery: 150 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 0,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 5, oil: 2, tech: 1 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        italy: { 
+            name: "Italy", 
+            resources: { food: 2000, oil: 1000, tech: 3000 }, 
+            troops: { infantry: 3000, tanks: 600, airSupport: 400, cavalry: 200, artillery: 200 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 1,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 6, oil: 3, tech: 3 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        spain: { 
+            name: "Spain", 
+            resources: { food: 3000, oil: 1000, tech: 2000 }, 
+            troops: { infantry: 2500, tanks: 400, airSupport: 200, cavalry: 200, artillery: 200 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 0,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 5, oil: 2, tech: 2 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        turkey: { 
+            name: "Turkey", 
+            resources: { food: 4000, oil: 1500, tech: 1500 }, 
+            troops: { infantry: 4000, tanks: 800, airSupport: 300, cavalry: 500, artillery: 300 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 1,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 7, oil: 3, tech: 2 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        iran: { 
+            name: "Iran", 
+            resources: { food: 3000, oil: 2000, tech: 1200 }, 
+            troops: { infantry: 3000, tanks: 700, airSupport: 250, cavalry: 300, artillery: 250 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 1,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 6, oil: 4, tech: 2 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        egypt: { 
+            name: "Egypt", 
+            resources: { food: 5000, oil: 800, tech: 800 }, 
+            troops: { infantry: 3500, tanks: 500, airSupport: 200, cavalry: 400, artillery: 200 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 0,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 8, oil: 2, tech: 1 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        saudiArabia: { 
+            name: "Saudi Arabia", 
+            resources: { food: 1500, oil: 10000, tech: 2000 }, 
+            troops: { infantry: 3000, tanks: 700, airSupport: 300, cavalry: 200, artillery: 200 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 0,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 4, oil: 10, tech: 2 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        nigeria: { 
+            name: "Nigeria", 
+            resources: { food: 4000, oil: 1000, tech: 500 }, 
+            troops: { infantry: 2500, tanks: 200, airSupport: 100, cavalry: 300, artillery: 100 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 0,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 5, oil: 2, tech: 1 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        philippines: { 
+            name: "Philippines", 
+            resources: { food: 3000, oil: 500, tech: 700 }, 
+            troops: { infantry: 2500, tanks: 300, airSupport: 150, cavalry: 200, artillery: 100 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 0,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 5, oil: 2, tech: 1 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        vietnam: { 
+            name: "Vietnam", 
+            resources: { food: 5000, oil: 800, tech: 800 }, 
+            troops: { infantry: 3000, tanks: 400, airSupport: 150, cavalry: 300, artillery: 150 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 0,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 6, oil: 2, tech: 1 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        southKorea: { 
+            name: "South Korea", 
+            resources: { food: 3000, oil: 2000, tech: 5000 }, 
+            troops: { infantry: 3500, tanks: 1000, airSupport: 800, cavalry: 300, artillery: 300 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 0,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 5, oil: 3, tech: 4 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        newZealand: { 
+            name: "New Zealand", 
+            resources: { food: 1800, oil: 50, tech: 800 }, 
+            troops: { infantry: 1000, tanks: 50, airSupport: 30, cavalry: 100, artillery: 20 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 0,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 4, oil: 1, tech: 3 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        colombia: { 
+            name: "Colombia", 
+            resources: { food: 1500, oil: 200, tech: 300 }, 
+            troops: { infantry: 1200, tanks: 100, airSupport: 50, cavalry: 300, artillery: 20 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 0,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 4, oil: 1, tech: 2 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        peru: { 
+            name: "Peru", 
+            resources: { food: 1400, oil: 150, tech: 250 }, 
+            troops: { infantry: 1100, tanks: 80, airSupport: 40, cavalry: 250, artillery: 15 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 0,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 3, oil: 1, tech: 1 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        malaysia: { 
+            name: "Malaysia", 
+            resources: { food: 2000, oil: 500, tech: 400 }, 
+            troops: { infantry: 1500, tanks: 100, airSupport: 60, cavalry: 400, artillery: 25 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 0,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 5, oil: 2, tech: 2 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        thailand: { 
+            name: "Thailand", 
+            resources: { food: 2500, oil: 300, tech: 350 }, 
+            troops: { infantry: 2000, tanks: 120, airSupport: 80, cavalry: 300, artillery: 30 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 0,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 4, oil: 1, tech: 2 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        },
+        northKorea: { 
+            name: "North Korea", 
+            resources: { food: 2000, oil: 1500, tech: 3000 }, 
+            troops: { infantry: 1000, tanks: 400, airSupport: 290, cavalry: 50, artillery: 300 }, 
+            allies: [], 
+            atWar: [], 
+            nuclear: 40,
+            lastAttacked: null,
+            lastRetaliated: null,
+            ai: true,
+            production: { food: 5, oil: 3, tech: 3 },
+            infrastructure: 1,
+            lastProduced: Date.now()
+        }
+    };
+
+    // Function to break alliance
+    function breakAlliance(country1, country2) {
+        if (countries[country1] && countries[country2]) {
+            const index = countries[country1].allies.indexOf(country2);
+            if (index > -1) {
+                countries[country1].allies.splice(index, 1);
+                console.log(`${country1} has broken alliance with ${country2}`);
+            } else {
+                console.log(`${country1} is not allied with ${country2}`);
+            }
+        } else {
+            console.log("One or both countries do not exist.");
+        }
+    }
+    
+    
+    function logAction(message) {
+        console.log(message); // Replace with your logging mechanism
+    }
+    
+    function combat(attacker, defender) {
+        const attackerStrength = attacker.troops.infantry + (attacker.troops.tanks * 2) + (attacker.troops.cavalry * 1.5) + (attacker.troops.artillery * 2);
+        const defenderStrength = defender.troops.infantry + (defender.troops.tanks * 2) + (defender.troops.cavalry * 1.5) + (defender.troops.artillery * 2);
+        
+        const outcome = Math.random() * (attackerStrength + defenderStrength);
+        
+        if (outcome < attackerStrength) {
+            logAction(`${attacker.name} wins the battle!`);
+            defender.troops.infantry = Math.max(0, defender.troops.infantry - Math.floor(defender.troops.infantry * 0.3)); // 30% loss
+        } else {
+            logAction(`${defender.name} wins the battle!`);
+            attacker.troops.infantry = Math.max(0, attacker.troops.infantry - Math.floor(attacker.troops.infantry * 0.3)); // 30% loss
+        }
+    }
+        const infoPanel = document.getElementById('info-panel');
+        const countryName = document.getElementById('country-name');
+        const countryDetails = document.getElementById('country-details');
+        const controlButton = document.getElementById('control-button');
+        const buildArmyButton = document.getElementById('build-army');
+        const developEconomyButton = document.getElementById('develop-economy');
+        const diplomacyButton = document.getElementById('diplomacy');
+        const formAllianceButton = document.getElementById('form-alliance');
+        const moveTroopsButton = document.getElementById('move-troops');
+        const declareWarButton = document.getElementById('declare-war');
+        const negotiateButton = document.getElementById('negotiate');
+        const log = document.getElementById('log');
+        const unitEffectiveness = {
+            infantry: {
+                infantry: 1, // Infantry is normal against infantry
+                tanks: 0.5,  // Infantry is less effective against tanks
+                airSupport: 1.5 // Infantry is more effective against air support
+            },
+            tanks: {
+                infantry: 2,  // Tanks are more effective against infantry
+                tanks: 1,     // Tanks are normal against tanks
+                airSupport: 1  // Tanks are normal against air support
+            },
+            airSupport: {
+                infantry: 1.3,  // Air support is normal against infantry
+                tanks: 1.5,   // Air support is more effective against tanks
+                airSupport: 1  // Air support is normal against air support
+            }
+        };
+        const unitStates = {
+            ready: 'ready',
+            attacking: 'attacking',
+            retreating: 'retreating'
+        };
+        let selectedCountry = null;
+        const terrainTypes = {
+            plains: { movementCost: 1, combatModifier: 1 },
+            mountains: { movementCost: 2, combatModifier: 0.5 },
+            forests: { movementCost: 1.5, combatModifier: 0.75 },
+            desert: { movementCost: 1.5, combatModifier: 1 },
+            urban: { movementCost: 1.2, combatModifier: 1.2 },
+        };
+        
+        // Example terrain assignment for countries
+        const countryTerrain = {
+            usa: 'plains',
+            russia: 'mountains',
+            china: 'plains',
+            germany: 'urban',
+            france: 'forests',
+            brazil: 'plains',
+            india: 'forests',
+            japan: 'urban',
+            uk: 'urban',
+            canada: 'mountains',
+            australia: 'desert',
+            southAfrica: 'plains',
+            mexico: 'plains',
+            argentina: 'plains',
+            italy: 'urban',
+            spain: 'forests',
+            turkey: 'mountains',
+            iran: 'mountains',
+            egypt: 'desert',
+            saudiArabia: 'desert',
+            nigeria: 'plains',
+            philippines: 'forests',
+            vietnam: 'forests',
+            thailand: 'plains',
+            southKorea: 'urban',
+            newZealand: 'plains',
+            colombia: 'forests',
+            peru: 'plains',
+            malaysia: 'forests',
+        };
+        const troopColors = {
+            infantry: "#0dcf00 ",
+            tanks: "#ab1616",
+            airSupport: "#12bae8"
+        };
+        function logAction(action) {
+            const entry = document.createElement('p');
+            entry.textContent = action;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+        let activeFilters = ['all']; // Track active filters
+        const logEntries = []; // Store log entries
+        
+        function updateLogDisplay() {
+            log.innerHTML = '<h2>Action Log</h2>'; // Clear existing log
+            logEntries.forEach(entry => {
+                if (activeFilters.includes('all') || activeFilters.includes(entry.type)) {
+                    const logEntry = document.createElement('p');
+                    logEntry.textContent = entry.action;
+                    log.appendChild(logEntry);
+                }
+            });
+            log.scrollTop = log.scrollHeight; // Scroll to the bottom
+        }
+       // Add event listeners for filter buttons
+document.getElementById('filter-all').addEventListener('click', () => {
+    activeFilters = ['all'];
+    updateLogDisplay();
+});
+
+document.getElementById('filter-moves').addEventListener('click', () => {
+    activeFilters = ['move'];
+    updateLogDisplay();
+});
+
+document.getElementById('filter-wars').addEventListener('click', () => {
+    activeFilters = ['war'];
+    updateLogDisplay();
+});
+
+document.getElementById('filter-alliances').addEventListener('click', () => {
+    activeFilters = ['alliance'];
+    updateLogDisplay();
+});
+        let logVisible = true; // Track visibility of the log
+
+        document.getElementById('toggle-log').addEventListener('click', () => {
+            logVisible = !logVisible; // Toggle visibility
+            document.getElementById('log').style.display = logVisible ? 'block' : 'none'; // Show or hide log
+            document.getElementById('toggle-log').textContent = logVisible ? 'Hide' : 'Show'; // Change button text
+        });
+        function logAction(action, type) {
+            const entry = document.createElement('p');
+            entry.textContent = action;
+            entry.className = type; // Add type class for filtering
+            logEntries.push({ action, type }); // Store the log entry
+            updateLogDisplay();
+        }
+
+        function updateTroopMarkers() {
+            document.querySelectorAll('.troop-marker').forEach(marker => marker.remove());
+            for (const key in countries) {
+                const country = countries[key];
+                const countryDiv = document.getElementById(key);
+                const totalTroops = country.troops.infantry + country.troops.tanks + country.troops.airSupport;
+        
+                const marker = document.createElement('div');
+                marker.className = 'troop-marker';
+                marker.style.width = '10px';
+                marker.style.height = '10px';
+                marker.style.top = `${countryDiv.offsetTop + 5}px`;
+                marker.style.left = `${countryDiv.offsetLeft + 5}px`;
+                marker.textContent = totalTroops;
+        
+                document.getElementById('world-map').appendChild(marker);
+        
+            }
+        }
+ // Modify the launchNuclearStrike function
+ function launchNuclearStrike(attackingCountryId, targetCountryId, numberOfStrikes, delay = 0) {
+    const attackingCountry = countries[attackingCountryId];
+    const targetCountry = countries[targetCountryId];
+
+    // Ensure the number of strikes does not exceed available nuclear weapons
+    numberOfStrikes = Math.min(attackingCountry.nuclear, numberOfStrikes);
+
+    // Decrease the nuclear weapons count
+    attackingCountry.nuclear -= numberOfStrikes;
+
+    // Get the coordinates of the target country
+    const targetElement = document.getElementById(targetCountryId);
+    const targetX = targetElement.offsetLeft + (targetElement.offsetWidth / 2);
+    const targetY = targetElement.offsetTop + (targetElement.offsetHeight / 2);
+
+    // Create multiple explosion effects with a random delay
+    for (let i = 0; i < numberOfStrikes; i++) {
+        const randomDelay = Math.random() * (200 - 10) + 10; // Random delay in milliseconds
+
+        setTimeout(() => {
+            const explosion = document.createElement('div');
+            explosion.className = 'explosion';
+            explosion.style.width = `${50}px`; // Size for each explosion
+            explosion.style.height = `${50}px`;
+
+            // Scatter the explosion around the target area
+            const scatterX = (Math.random() - 0.5) * 100; // Random scatter in X direction
+            const scatterY = (Math.random() - 0.5) * 100; // Random scatter in Y direction
+            explosion.style.left = `${targetX - 25 + scatterX}px`; // Offset explosion position
+            explosion.style.top = `${targetY - 25 + scatterY}px`; // Offset explosion position
+            document.body.appendChild(explosion);
+
+            // Remove the explosion after the animation ends
+            setTimeout(() => {
+                explosion.remove();
+            }, 1500); // Match the duration of the animation
+
+            // Create smoke effect
+            const smoke = document.createElement('div');
+            smoke.className = 'smoke';
+            smoke.style.width = `${30}px`; // Fixed size for smoke
+            smoke.style.height = `${30}px`;
+            smoke.style.left = `${targetX - 15}px`; // Center the smoke
+            smoke.style.top = `${targetY - 15}px`; // Center the smoke
+            document.body.appendChild(smoke);
+
+            // Calculate troop losses based on the number of strikes
+            const infantryLosses = Math.floor(targetCountry.troops.infantry * 0.2 * numberOfStrikes); // 20% infantry loss per strike
+            targetCountry.troops.infantry = Math.max(0, targetCountry.troops.infantry - infantryLosses);
+
+            const tankLosses = Math.floor(targetCountry.troops.tanks * 0.15 * numberOfStrikes); // 15% tank loss per strike
+            targetCountry.troops.tanks = Math.max(0, targetCountry.troops.tanks - tankLosses);
+
+            const airSupportLosses = Math.floor(targetCountry.troops.airSupport * 0.1 * numberOfStrikes); // 10% air support loss per strike
+            targetCountry.troops.airSupport = Math.max(0, targetCountry.troops.airSupport - airSupportLosses);
+
+            // Show modal with results after a delay
+            setTimeout(() => {
+                const modalMessage = document.getElementById('modal-message');
+                modalMessage.textContent = `${targetCountry.name} suffered ${infantryLosses} infantry, ${tankLosses} tanks, and ${airSupportLosses} air support losses due to the nuclear strikes!`;
+                document.getElementById('modal').style.display = 'block';
+            }, 1000); // Delay of 1 second before showing the results
+
+            // Close modal functionality
+            document.querySelector('.close').onclick = function() {
+                document.getElementById('modal').style.display = 'none';
+            };
+
+            // Remove the smoke after the animation ends
+            setTimeout(() => {
+                smoke.remove();
+            }, 2000); // Match the duration of the smoke animation
+
+        }, i * randomDelay); // Use the random delay for each explosion
+    }
+
+    // Check if the target country can retaliate
+    if (targetCountry.nuclear > 0 && targetCountry.troops.infantry + targetCountry.troops.tanks + targetCountry.troops.airSupport <= 250) {
+        const currentTime = Date.now();
+        if (!targetCountry.lastRetaliated || (currentTime - targetCountry.lastRetaliated) > 30000) { // 30 seconds limit
+            const retaliationStrikes = numberOfStrikes + Math.floor(Math.random() * 2) + 1; // Send the same number of nukes received + 1 or 2
+            if (targetCountry.nuclear >= retaliationStrikes) {
+                setTimeout(() => { // Add a delay for retaliation
+                    logAction(`${targetCountry.name} is retaliating against ${attackingCountry.name} with ${retaliationStrikes} nuclear strikes!`);
+                    targetCountry.lastRetaliated = currentTime; // Update last retaliated time
+                    launchNuclearStrike(targetCountryId, attackingCountryId, retaliationStrikes);
+                }, 2000); // 2 seconds delay for retaliation
+            }
+        }
+    }
+
+    // Check for takeover
+    checkForTakeover(targetCountryId);
+}
+
+        function applyNuclearStrikeEffects(targetCountry, numberOfStrikes) {
+            // Calculate troop losses based on the number of strikes
+            const infantryLosses = Math.floor(targetCountry.troops.infantry * 0.2 * numberOfStrikes); // 20% infantry loss per strike
+            targetCountry.troops.infantry = Math.max(0, targetCountry.troops.infantry - infantryLosses);
+            logAction(`${targetCountry.name} suffered ${infantryLosses} infantry losses due to the nuclear strikes!`);
+        
+            const tankLosses = Math.floor(targetCountry.troops.tanks * 0.15 * numberOfStrikes); // 15% tank loss per strike
+            targetCountry.troops.tanks = Math.max(0, targetCountry.troops.tanks - tankLosses);
+            logAction(`${targetCountry.name} suffered ${tankLosses} tank losses due to the nuclear strikes!`);
+        
+            const airSupportLosses = Math.floor(targetCountry.troops.airSupport * 0.1 * numberOfStrikes); // 10% air support loss per strike
+            targetCountry.troops.airSupport = Math.max(0, targetCountry.troops.airSupport - airSupportLosses);
+            logAction(`${targetCountry.name} suffered ${airSupportLosses} air support losses due to the nuclear strikes!`);
+        
+            // Create fallout effect
+            createFalloutEffect(targetCountry);
+        
+            // Apply fallout effects
+            applyFalloutEffects(targetCountry); // Call the fallout effects function
+        
+            // Additional resource losses based on the number of strikes
+            const oilLoss = Math.floor(targetCountry.resources.oil * 0.1 * numberOfStrikes); // 10% oil loss per strike
+            targetCountry.resources.oil = Math.max(0, targetCountry.resources.oil - oilLoss);
+            logAction(`${targetCountry.name} lost ${oilLoss } oil resources due to the nuclear strikes!`);
+        
+            const foodLoss = Math.floor(targetCountry.resources.food * 0.1 * numberOfStrikes); // 10% food loss per strike
+            targetCountry.resources.food = Math.max(0, targetCountry.resources.food - foodLoss);
+            logAction(`${targetCountry.name} lost ${foodLoss} food resources due to the nuclear strikes!`);
+        
+            // Track the last attacker
+            targetCountry.lastAttacked = lastAttacker;
+        
+            // Check for retaliation
+            if (targetCountry.nuclear > 0 && lastAttacker) {
+                logAction(`${targetCountry.name} has launched a retaliatory nuclear strike on ${countries[lastAttacker].name}!`);
+                launchNuclearStrike(targetCountry.id, lastAttacker);
+            }
+        
+            // Check for takeover
+            checkForTakeover(targetCountry.id);
+        }
+        function applyFalloutEffects(targetCountry) {
+            const falloutDuration = 60; // Duration in seconds
+            const interval = 1000; // Interval in milliseconds (1 second)
+        
+            // Create a fallout visual effect
+            const falloutEffect = document.createElement('div');
+            falloutEffect.className = 'fallout'; // Use the existing fallout class
+            document.body.appendChild(falloutEffect);
+        
+            // Position the fallout effect over the target country
+            const targetElement = document.getElementById(targetCountry.id);
+            const targetRect = targetElement.getBoundingClientRect();
+            const targetX = targetRect.left + window.scrollX + targetRect.width / 2;
+            const targetY = targetRect.top + window.scrollY + targetRect.height / 2;
+        
+            falloutEffect.style.left = `${targetX - 150}px`; // Center the fallout effect
+            falloutEffect.style.top = `${targetY - 150}px`; // Center the fallout effect
+            falloutEffect.style.width = '300px'; // Initial size of the fallout effect
+            falloutEffect.style.height = '300px'; // Initial size of the fallout effect;
+        
+            // Apply damage over time
+            const falloutInterval = setInterval(() => {
+                // Reduce infantry, tanks, and air support by a percentage
+                const infantryLoss = Math.floor(targetCountry.troops.infantry * 0.05); // 5% loss per second
+                const tankLoss = Math.floor(targetCountry.troops.tanks * 0.03); // 3% loss per second
+                const airSupportLoss = Math.floor(targetCountry.troops.airSupport * 0.02); // 2% loss per second
+        
+                targetCountry.troops.infantry = Math.max(0, targetCountry.troops.infantry - infantryLoss);
+                targetCountry.troops.tanks = Math.max(0, targetCountry.troops.tanks - tankLoss);
+                targetCountry.troops.airSupport = Math.max(0, targetCountry.troops.airSupport - airSupportLoss);
+        
+                // Reduce resources
+                const foodLoss = Math.floor(targetCountry.resources.food * 0.02); // 2% food loss per second
+                const oilLoss = Math.floor(targetCountry.resources.oil * 0.02); // 2% oil loss per second
+        
+                targetCountry.resources.food = Math.max(0, targetCountry.resources.food - foodLoss);
+                targetCountry.resources.oil = Math.max(0, targetCountry.resources.oil - oilLoss);
+        
+                // Log the losses
+                logAction(`${targetCountry.name} is suffering from fallout effects: ${infantryLoss} infantry, ${tankLoss} tanks, ${airSupportLoss} air support, ${foodLoss} food, ${oilLoss} oil lost this second.`);
+            }, interval);
+        
+            // Stop the fallout effects after the duration
+            setTimeout(() => {
+                clearInterval(falloutInterval);
+                document.body.removeChild(falloutEffect); // Remove the fallout visual effect
+                logAction(`${targetCountry.name} has recovered from the fallout effects.`);
+            }, falloutDuration * 1000); // Convert seconds to milliseconds
+        }
+        
+        function moveTroops(selectedCountryId, targetCountryId, troopsToMove, troopType) {
+            const selectedCountry = countries[selectedCountryId];
+            const targetCountry = countries[targetCountryId];
+        
+            // Check if the target country is an ally or if they are at war
+            if (!selectedCountry.allies.includes(targetCountryId) && !selectedCountry.atWar.includes(targetCountryId)) {
+                logAction(`${selectedCountry.name} cannot move troops to ${targetCountry.name} because they are not allies and not at war.`);
+                return; // Exit the function if the target is not an ally and not at war
+            }
+        
+            // Get terrain types
+            const terrainFrom = countryTerrain[selectedCountryId];
+            const terrainTo = countryTerrain[targetCountryId];
+        
+            // Check if there are enough resources to move troops
+            if (troopType === 'tanks' && selectedCountry.resources.oil < 10) { // Example cost for moving tanks
+                logAction(`${selectedCountry.name} does not have enough oil resources to move tanks.`);
+                return;
+            }
+            if (troopType === 'airSupport' && selectedCountry.resources.tech < 15) { // Example cost for moving air support
+                logAction(`${selectedCountry.name} does not have enough tech resources to move air support.`);
+                return;
+            }
+            if (selectedCountry.resources.food < 10) { // Example cost for moving troops
+                logAction(`${selectedCountry.name} does not have enough food resources to move troops.`);
+                return;
+            }
+        
+            // Calculate movement cost based on terrain
+            const movementCost = terrainTypes[terrainFrom].movementCost;
+        
+            if (troopsToMove <= selectedCountry.troops[troopType]) {
+                selectedCountry.troops[troopType] -= troopsToMove; // Deduct the number of troops being moved
+                logAction(`${selectedCountry.name} is moving ${troopsToMove} ${troopType} to ${targetCountry.name} through ${terrainFrom}.`);
+        
+                // Adjust troop movement based on terrain
+                const effectiveTroops = Math.floor(troopsToMove / movementCost);
+        
+                const troopMarker = document.createElement('div');
+                troopMarker.className = 'troop-marker';
+                troopMarker.style.width = '10px';
+                troopMarker.style.height = '10px';
+                troopMarker.style.backgroundColor = 'red';
+                troopMarker.style.position = 'absolute';
+                troopMarker.style.top = `${document.getElementById(selectedCountryId).offsetTop + 5}px`;
+                troopMarker.style.left = `${document.getElementById(selectedCountryId).offsetLeft + 5}px`;
+                document.getElementById('world-map').appendChild(troopMarker);
+        
+                const targetX = document.getElementById(targetCountryId).offsetLeft + 5;
+                const targetY = document.getElementById(targetCountryId).offsetTop + 5;
+        
+                // Draw the path with an arch using a Bezier curve
+                const svg = document.getElementById('troop-path');
+                const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        
+                // Calculate the control point for the Bezier curve
+                const controlX = (troopMarker.offsetLeft + 5 + targetX) / 2;
+                const controlY = Math.min(troopMarker.offsetTop + 5, targetY) - 50; // Adjust the height of the arch
+        
+                // Create the path data for the Bezier curve
+                const pathData = `M ${troopMarker.offsetLeft + 5} ${troopMarker.offsetTop + 5} Q ${controlX} ${controlY} ${targetX} ${targetY}`;
+                path.setAttribute("d", pathData);
+                path.setAttribute("stroke", troopColors[troopType] || "lime"); // Use the color based on troop type
+                path.setAttribute("stroke-width", "2");
+                path.setAttribute("fill", "none");
+                svg.appendChild(path);
+        
+                // Set up the dash array for drawing effect
+                const length = path.getTotalLength();
+                path.setAttribute("stroke-dasharray", length);
+                path.setAttribute("stroke-dashoffset", length);
+        
+                // Create a text element to display the number of troops
+                const troopCountText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                troopCountText.setAttribute("fill", "white");
+                troopCountText.setAttribute("font-size", "12");
+                troopCountText.setAttribute("text-anchor", "middle");
+                svg.appendChild(troopCountText);
+        
+                // Create a smaller black dot at the tip of the line being drawn
+                const tipDot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                tipDot.setAttribute("r", "3"); // Smaller radius of the dot
+                tipDot.setAttribute("fill", "black");
+                svg.appendChild(tipDot);
+        
+                // Animate the drawing of the path over 3 seconds
+                const duration = 3000; // 3 seconds
+                const fadeDuration = 1000; // 1 second for fade out
+                const startTime = performance.now();
+        
+                function animatePath() {
+                    const currentTime = performance.now();
+                    const elapsed = currentTime - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+        
+                    // Update the dash offset to create a drawing effect
+                    path.setAttribute("stroke-dashoffset", length * (1 - progress));
+        
+                    // Update the position of the troop count text and tip dot
+                    const pointAtLength = path.getPointAtLength(length * progress);
+                    troopCountText.setAttribute("x", pointAtLength.x);
+                    troopCountText.setAttribute("y", pointAtLength.y - 10); // Position above the line
+                    tipDot.setAttribute("cx", pointAtLength.x);
+                    tipDot.setAttribute("cy", pointAtLength.y); // Position the dot at the tip of the line
+        
+                    if (progress < 1) {
+                        requestAnimationFrame(animatePath);
+                    } else {
+                        // After the path animation completes, update troop counts
+                        if (selectedCountry.atWar.includes(targetCountryId)) {
+                            const losses = Math.floor(effectiveTroops * terrainTypes[terrainTo].combatModifier); // Adjust losses based on terrain
+                            targetCountry.troops.infantry -= losses;
+                            logAction(`${selectedCountry.name} engaged in combat with ${targetCountry.name} and caused ${losses} losses.`);
+                        } else {
+                            targetCountry.troops[troopType] += effectiveTroops; // Add effective troops to target country
+                            logAction(`${selectedCountry.name} successfully moved troops to ${targetCountry.name}.`);
+                        }
+                        checkForTakeover(targetCountryId); // Check for takeover after troop movement
+                        updateTroopMarkers(); // Update troop markers after movement
+        
+                        // Create a larger black circle at the end of the line
+                        const endCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                        endCircle.setAttribute("r", "6"); // Larger radius for the end circle
+                        endCircle.setAttribute("fill", "black");
+                        endCircle.setAttribute("cx", targetX);
+                        endCircle.setAttribute("cy", targetY);
+                        svg.appendChild(endCircle);
+        
+                        // Set a timeout to remove the larger circle after 1 second
+                        setTimeout(() => {
+                            endCircle.remove();
+                        }, 1000); // 1 second delay for removal
+        
+                        // Start fade-out effect for the path, troop count text, and tip dot
+                        let fadeStartTime = performance.now();
+                        function fadeOut() {
+                            const fadeElapsed = performance.now() - fadeStartTime;
+                            const fadeProgress = Math.min(fadeElapsed / fadeDuration, 1);
+                            path.setAttribute("opacity", 1 - fadeProgress); // Decrease opacity of the path
+                            troopCountText.setAttribute("opacity", 1 - fadeProgress); // Decrease opacity of the text
+                            tipDot.setAttribute("opacity", 1 - fadeProgress); // Decrease opacity of the dot
+        
+                            if (fadeProgress < 1) {
+                                requestAnimationFrame(fadeOut);
+                            } else {
+                                path.remove(); // Remove path after fade out
+                                troopCountText.remove(); // Remove text after fade out
+                                tipDot.remove(); // Remove dot after fade out
+                            }
+                        }
+                        fadeOut();
+                    }
+                }
+        
+                animatePath();
+        
+                // Remove the troop marker after the animation
+                setTimeout(() => {
+                    troopMarker.remove();
+                }, duration + fadeDuration + 400); // Remove after total duration
+            } else {
+                logAction(`Not enough ${troopType} troops to move.`);
+            }
+        }
+        // Add this function to check for country takeover
+        function checkForTakeover(targetCountryId) {
+            const targetCountry = countries[targetCountryId];
+            const totalTroops = targetCountry.troops.infantry + targetCountry.troops.tanks + targetCountry.troops.airSupport;
+        
+            if (totalTroops <= 0) {
+                logAction(`${targetCountry.name} has been taken over!`);
+                // Transfer resources and troops to the conquering country
+                const conqueringCountryId = selectedCountry; // Assuming the last country that attacked is the conquering country
+                countries[conqueringCountryId].resources += targetCountry.resources;
+                countries[conqueringCountryId].troops.infantry += targetCountry.troops.infantry;
+                countries[conqueringCountryId].troops.tanks += targetCountry.troops.tanks;
+                countries[conqueringCountryId].troops.airSupport += targetCountry.troops.airSupport;
+        
+                // Reset the target country
+                targetCountry.resources = 0;
+                targetCountry.troops.infantry = 0;
+                targetCountry.troops.tanks = 0;
+                targetCountry.troops.airSupport = 0;
+                targetCountry.allies = [];
+                targetCountry.atWar = [];
+        
+                // Mark the conquered country as part of the conquering country
+                countries[conqueringCountryId].conqueredCountries = countries[conqueringCountryId].conqueredCountries || [];
+                countries[conqueringCountryId].conqueredCountries.push(targetCountryId);
+        
+                // Give the conquering country an additional AI turn
+                countries[conqueringCountryId].aiTurnCount = (countries[conqueringCountryId].aiTurnCount || 0) + 1;
+            }
+        }
+formAllianceButton.addEventListener('click', () => {
+    if (selectedCountry) {
+        const targetCountry = prompt("Enter the name of the country you want to form an alliance with:").toLowerCase();
+        if (countries[targetCountry] && targetCountry !== selectedCountry) {
+            // Check if they are already allies
+            if (!countries[selectedCountry].allies.includes(targetCountry)) {
+                countries[selectedCountry].allies.push(targetCountry);
+                countries[targetCountry].allies.push(selectedCountry); // Form alliance in both directions
+                logAction(`${countries[selectedCountry].name} has formed an alliance with ${countries[targetCountry].name}!`);
+                
+                // Update country details
+                countryDetails.textContent = `Resources: ${countries[selectedCountry].resources}, Infantry: ${countries[selectedCountry].troops.infantry}, Tanks: ${countries[selectedCountry].troops.tanks}, Air Support: ${countries[selectedCountry].troops.airSupport}, Allies: ${countries[selectedCountry].allies.join(', ') || 'None'}, At War: ${countries[selectedCountry].atWar.join(', ') || 'None'}`;
+            } else {
+                logAction(`${countries[selectedCountry].name} and ${countries[targetCountry].name} are already allies.`);
+            }
+        } else {
+            logAction(`Invalid target for forming an alliance.`);
+        }
+    }
+});
+        declareWarButton.addEventListener('click', () => {
+            if (selectedCountry) {
+                const targetCountry = prompt("Enter the name of the country you want to declare war on (USA, Russia, China):").toLowerCase();
+                if (countries[targetCountry] && targetCountry !== selectedCountry) {
+                    countries[selectedCountry].atWar.push(targetCountry);
+                    countries[targetCountry].atWar.push(selectedCountry);
+                    logAction(`${countries[selectedCountry].name} has declared war on ${countries[targetCountry].name}!`);
+                } else {
+                    logAction(`Invalid target for declaring war.`);
+                }
+            }
+        });
+
+        moveTroopsButton.addEventListener('click', () => {
+            if (selectedCountry) {
+                const targetCountry = prompt("Enter the name of the country you want to move troops to (USA, Russia, China):").toLowerCase();
+                if (countries[targetCountry] && targetCountry !== selectedCountry) {
+                    const troopsToMove = parseInt(prompt("How many infantry troops do you want to move?"));
+                    moveTroops(selectedCountry, targetCountry, troopsToMove);
+                } else {
+                    logAction(`Invalid target for troop movement.`);
+                }
+            }
+        });
+        nuclearStrikeButton = document.getElementById('nuclear-strike');
+
+        // Enable the nuclear strike button when a country is selected
+        nuclearStrikeButton.disabled = false;
+        
+        // Add event listener for nuclear strike
+        nuclearStrikeButton.addEventListener('click', () => {
+            if (selectedCountry) {
+                const targetCountry = prompt("Enter the name of the country you want to launch a nuclear strike on:").toLowerCase();
+                if (countries[targetCountry] && targetCountry !== selectedCountry) {
+                    launchNuclearStrike(selectedCountry, targetCountry);
+                } else {
+                    logAction(`Invalid target for nuclear strike.`);
+                }
+            }
+        });
+        function logAction(action) {
+            const entry = document.createElement('p');
+            entry.textContent = action;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+  
+        }
+        function checkForTakeover(targetCountryId) {
+            const targetCountry = countries[targetCountryId];
+            const totalTroops = targetCountry.troops.infantry + targetCountry.troops.tanks + targetCountry.troops.airSupport;
+        
+            if (totalTroops <= 0) {
+                logAction(`${targetCountry.name} has been taken over!`);
+                // Transfer resources and troops to the conquering country
+                const conqueringCountryId = selectedCountry; // Assuming the last country that attacked is the conquering country
+                countries[conqueringCountryId].resources += targetCountry.resources;
+                countries[conqueringCountryId].troops.infantry += targetCountry.troops.infantry;
+                countries[conqueringCountryId].troops.tanks += targetCountry.troops.tanks;
+                countries[conqueringCountryId].troops.airSupport += targetCountry.troops.airSupport;
+        
+                // Reset the target country
+                targetCountry.resources = 0;
+                targetCountry.troops.infantry = 0;
+                targetCountry.troops.tanks = 0;
+                targetCountry.troops.airSupport = 0;
+                targetCountry.allies = [];
+                targetCountry.atWar = [];
+        
+                // Mark the conquered country as part of the conquering country
+                countries[conqueringCountryId].conqueredCountries = countries[conqueringCountryId].conqueredCountries || [];
+                countries[conqueringCountryId].conqueredCountries.push(targetCountryId);
+        
+                // Give the conquering country an additional AI turn
+                countries[conqueringCountryId].aiTurnCount = (countries[conqueringCountryId].aiTurnCount || 0) + 1;
+            }
+        }
+        function updateProductionRates(countryId) {
+            const country = countries[countryId];
+        
+            // Set base production rates
+            country.production.food = 10 * country.infrastructure; // Food production increases by 10 for each infrastructure level
+            country.production.oil = 5 * country.infrastructure;   // Oil production increases by 5 for each infrastructure level
+            country.production.tech = 2 * country.infrastructure;   // Tech production increases by 2 for each infrastructure level
+        
+            logAction(`${country.name}'s production rates updated: Food: ${country.production.food}, Oil: ${country.production.oil}, Tech: ${country.production.tech}`);
+        }
+        function combat(attacker, defender) {
+            const attackerStrength = attacker.troops.infantry + (attacker.troops.tanks * 2) + (attacker.troops.cavalry * 1.5) + (attacker.troops.artillery * 2) + (attacker.troops.airSupport * 1.5);
+            const defenderStrength = defender.troops.infantry + (defender.troops.tanks * 2) + (defender.troops.cavalry * 1.5) + (defender.troops.artillery * 2) + (defender.troops.airSupport * 1.5);
+        
+            const outcome = Math.random() * (attackerStrength + defenderStrength);
+        
+            if (outcome < attackerStrength) {
+                logAction(`${attacker.name} wins the battle!`);
+                defender.troops.infantry = Math.max(0, defender.troops.infantry - Math.floor(defender.troops.infantry * 0.3)); // 30% loss
+            } else {
+                logAction(`${defender.name} wins the battle!`);
+                attacker.troops.infantry = Math.max(0, attacker.troops.infantry - Math.floor(attacker.troops.infantry * 0.3)); // 30% loss
+            }
+        }
+    // Update the aiDecisionMaking function to include the new launchNuclearStrike logic
+function aiDecisionMaking() {
+    for (const key in countries) {
+        if (countries[key].ai) {
+            const randomDelay = Math.floor(Math.random() * 5000); // Random delay between 0 and 5000 ms
+            setTimeout(() => {
+                const country = countries[key];
+                // Calculate production based on infrastructure level
+                const productionMultiplier = 1 + (country.infrastructure * 0.1); // Increase production by 10% for each infrastructure level
+                const foodProduced = Math.floor(country.production.food * productionMultiplier);
+                const oilProduced = Math.floor(country.production.oil * productionMultiplier);
+                const techProduced = Math.floor(country.production.tech * productionMultiplier);
+
+                // Update resources based on production
+                country.resources.food += foodProduced;
+                country.resources.oil += oilProduced;
+                country.resources.tech += techProduced;
+
+                logAction(`${country.name} has produced resources: Food: ${foodProduced}, Oil: ${oilProduced}, Tech: ${techProduced}`);
+
+              // Infrastructure upgrade logic
+// Infrastructure upgrade logic
+const infrastructureUpgradeCost = 1000; // Define the cost to upgrade infrastructure
+if (country.resources.food >= infrastructureUpgradeCost) {
+    country.resources.food -= infrastructureUpgradeCost; // Deduct the cost
+    country.infrastructure += 1; // Increase infrastructure level
+    updateProductionRates(key); // Update production rates after upgrading infrastructure
+    logAction(`${country.name} has upgraded its infrastructure to level ${country.infrastructure}!`);
+}
+                // Check if the country can retaliate or launch a nuclear strike
+                const currentTime = Date.now();
+                if (country.lastAttacked && country.nuclear > 0) {
+                    if (!country.lastRetaliated || (currentTime - country.lastRetaliated) > 30000) { // 30 seconds limit
+                        const numberOfStrikes = Math.min(countries[country.lastAttacked].nuclear, 1); // Only retaliate with 1 nuke
+                        logAction(`${country.name} is retaliating against ${countries[country.lastAttacked].name} with a nuclear strike!`);
+                        country.lastRetaliated = currentTime; // Update last retaliated time
+                        launchNuclearStrike(key, country.lastAttacked, numberOfStrikes);
+                        country.lastAttacked = null; // Reset after retaliation
+                        return; // Exit the function to prevent further actions
+                    }
+                }
+
+                // New condition: Launch a nuclear strike if troop count is 250 or less
+                const totalTroops = country.troops.infantry + country.troops.tanks + country.troops.airSupport;
+                if (totalTroops <= 250 && country.nuclear > 0) {
+                    const targetCountryId = Object.keys(countries).filter(id => id !== key)[Math.floor(Math.random() * (Object.keys(countries).length - 1))];
+                    const numberOfStrikes = Math.min(country.nuclear, 1); // Launch only 1 nuke
+                    logAction(`${country.name} is launching a nuclear strike against ${countries[targetCountryId].name}!`);
+                    launchNuclearStrike(key, targetCountryId, numberOfStrikes);
+                    return; // Exit the function to prevent further actions
+                }
+    // Existing economic crisis logic
+    if (Math.random() < 0.1) {
+        const loss = Math.floor(country.resources.food * 0.2);
+        country.resources.food -= loss;
+        logAction(`${country.name} faced an economic crisis and lost ${loss} food resources!`);
+    }
+        
+                        const actionChance = Math.random();
+                        if (actionChance < 0.3) { // 30% chance to do nothing
+                            logAction(`${country.name} is taking no action this turn.`);
+                            return; // Skip to the next country
+                        }
+        
+                        // Build army if resources allow
+                        if (country.resources.food >= 100 && country.troops.infantry < 1000) {
+                            logAction(`${country.name} is building an army.`);
+                            country.troops.infantry += 20;
+                            country.resources.food -= 100; // Cost of building army
+                        }
+        
+                        // Develop economy if resources are low
+                        if (country.resources.food < 200) {
+                            const resourceTypes = ['food', 'oil', 'tech'];
+                            const resourceToIncrease = resourceTypes[Math.floor(Math.random() * resourceTypes.length)];
+                            country.resources[resourceToIncrease] += 20; // Increase the selected resource by 20
+                            logAction(`${country.name} developed their economy! Increased ${resourceToIncrease}: ${country.resources[resourceToIncrease]}`);
+                        }
+        
+                        // Check for potential allies and enemies
+                        const potentialEnemies = Object.keys(countries).filter(id => id !== key && !countries[id].allies.includes(key));
+                        const potentialAllies = Object.keys(countries).filter(id => id !== key && countries[id].allies.includes(key));
+        
+                        // 20% chance to form an alliance, but only if they have less than 2 allies
+                        if (Math.random() < 0.2 && potentialAllies.length < 2) {
+                            const allyId = potentialAllies[Math.floor(Math.random() * potentialAllies.length)];
+                            if (!countries[key].allies.includes(allyId) && countries[allyId].allies.length < 2) {
+                                countries[key].allies.push(allyId);
+                                countries[allyId].allies.push(key); // Form alliance in both directions
+                                logAction(`${countries[key].name} has formed an alliance with ${countries[allyId].name}!`);
+                            }
+                        }
+        
+                        // Move troops strategically considering terrain
+                        if (potentialEnemies.length > 0) {
+                            const targetCountryId = potentialEnemies[Math.floor(Math.random() * potentialEnemies.length)];
+                            const targetCountry = countries[targetCountryId];
+        
+                            // Randomly select troop type to move
+                            const troopTypes = ['infantry', 'tanks',
+                            'airSupport'];
+                            const troopType = troopTypes[Math.floor(Math.random() * troopTypes.length)];
+                            const troopsToMove = Math.floor(country.troops[troopType] * 0.5); // Move half of the available troops of that type
+        
+                            // Check if there are enough troops of the selected type and resources
+                            if (country.troops[troopType] >= troopsToMove) {
+                                if (troopType === 'tanks' && country.resources.oil >= 10 && country.resources.food >= 10) {
+                                    moveTroops(key, targetCountryId, troopsToMove, troopType);
+                                } else if (troopType === 'airSupport' && country.resources.tech >= 15 && country.resources.food >= 10) {
+                                    moveTroops(key, targetCountryId, troopsToMove, troopType);
+                                } else if (troopType === 'infantry' && country.resources.food >= 10) {
+                                    moveTroops(key, targetCountryId, troopsToMove, troopType);
+                                }
+                            }
+                        }
+        
+                        // Randomly declare war based on troop strength
+                        if (Math.random() < 0.3 && potentialEnemies.length > 0) { // 30% chance to declare war
+                            const targetCountryId = potentialEnemies[Math.floor(Math.random() * potentialEnemies.length)];
+                            if (targetCountryId) {
+                                countries[key].atWar.push(targetCountryId);
+                                countries[targetCountryId].atWar.push(key);
+                                logAction(`${country.name} has declared war on ${countries[targetCountryId].name}!`);
+                            }
+                        }
+        
+                        // Check if any wars need to be ended
+                        for (const enemyId of countries[key].atWar) {
+                            if (countries[enemyId].troops.infantry <= 0) {
+                                logAction(`${country.name} has ended the war with ${countries[enemyId].name} as they have no troops left.`);
+                                countries[key].atWar = countries[key].atWar.filter(id => id !== enemyId);
+                                countries[enemyId].atWar = countries[enemyId].atWar.filter(id => id !== key);
+                            }
+                        }
+        
+                        // Counterattack logic
+                        for (const enemyId of countries[key].atWar) {
+                            if (countries[enemyId].troops.infantry > 0) {
+                                const troopTypes = ['infantry', 'tanks', 'airSupport'];
+                                const attackingTroopType = troopTypes[Math.floor(Math.random() * troopTypes.length)];
+                                const defendingTroopType = troopTypes[Math.floor(Math.random() * troopTypes.length)];
+                                const troopsToCounter = Math.floor(countries[enemyId].troops[attackingTroopType] * 0.5 * unitEffectiveness[attackingTroopType][defendingTroopType]); // Counterattack with half of the enemy's troops adjusted by effectiveness
+        
+                                if (countries[key].troops[attackingTroopType] >= troopsToCounter) {
+                                    moveTroops(key, enemyId, troopsToCounter, attackingTroopType);
+                                    logAction(`${country.name} is counterattacking ${countries[enemyId].name} with ${troopsToCounter} ${attackingTroopType}!`);
+                                }
+                            }
+                        }
+        
+                        // Form alliances if resources are low
+                        if (country.resources.food < 200 && potentialAllies.length > 0) {
+                            const allyId = potentialAllies[Math.floor(Math.random() * potentialAllies.length)];
+                            logAction(`${country.name} is negotiating for peace with ${countries[allyId].name}.`);
+                            // Potentially form an alliance or reinforce existing ones
+                        }
+                    }, randomDelay); // Execute the decision-making after the random delay
+                }
+            }
+            updateTroopMarkers(); // Update troop markers after AI actions
+        }
+        setInterval(aiDecisionMaking, 5000);
+        document.querySelectorAll('.country').forEach(country => {
+            country.addEventListener('mouseenter', (event) => {
+                const countryId = country.id;
+                const tooltip = document.getElementById('tooltip');
+                
+                // Get the country details
+                const details = countries[countryId];
+                
+                // Set tooltip text with country statistics, production rates, and infrastructure level
+                tooltip.innerHTML = `
+                    <strong>${details.name}</strong><br>
+                    Food: ${details.resources.food} (Production: ${details.production.food})<br>
+                    Oil: ${details.resources.oil} (Production: ${details.production.oil})<br>
+                    Tech: ${details.resources.tech} (Production: ${details.production.tech})<br>
+                    Infantry: ${details.troops.infantry}<br>
+                    Tanks: ${details.troops.tanks}<br>
+                    Air Support: ${details.troops.airSupport}<br>
+                    Nuclear: ${details.nuclear}<br>
+                    Infrastructure Level: ${details.infrastructure}<br>
+                    Allies: ${details.allies.join(', ') || 'None'}<br>
+                    At War: ${details.atWar.join(', ') || 'None'}
+                `; // Set tooltip content
+                
+                tooltip.style.display = 'block'; // Show tooltip
+                tooltip.style.left = `${event.pageX + 10}px`; // Position tooltip
+                tooltip.style.top = `${event.pageY + 10}px`;
+            });
+        
+            country.addEventListener('mousemove', (event) => {
+                const tooltip = document.getElementById('tooltip');
+                tooltip.style.left = `${event.pageX + 10}px`; // Update position
+                tooltip.style.top = `${event.pageY + 10}px`;
+            });
+        
+            country.addEventListener('mouseleave', () => {
+                const tooltip = document.getElementById('tooltip');
+                tooltip.style.display = 'none'; // Hide tooltip
+            });
+        });
+        if (selectedCountry) {
+            document.getElementById(selectedCountry).classList.remove('selected');
+        }
+       
+        selectedCountry = countryId;
+        country.classList.add('selected');
+        countryName.textContent = details.name;
+        countryDetails.textContent = `Resources: Food: ${details.resources.food}, Oil: ${details.resources.oil}, Tech: ${details.resources.tech}, Infantry: ${details.troops.infantry}, Tanks: ${details.troops.tanks}, Air Support: ${details.troops.airSupport}, Nuclear: ${details.nuclear}, Allies: ${details.allies.join(', ') || 'None'}, At War: ${details.atWar.join(', ') || 'None'}`;
+        
+
+
+    // Enable buttons based on selection
+    controlButton.disabled = false;
+    buildArmyButton.disabled = false;
+    developEconomyButton.disabled = false;
+    diplomacyButton.disabled = false;
+    formAllianceButton.disabled = false;
+    moveTroopsButton.disabled = false; 
+    declareWarButton.disabled = false; 
+    negotiateButton.disabled = false;
+    nuclearStrikeButton.disabled = details.nuclear <= 0; // Enable if nuclear weapons are available
+
+        logAction(`Selected ${details.name}`);
+        updateTroopMarkers();
+
+
+    function displayResources(countryId) {
+        const country = countries[countryId];
+        logAction(`${country.name} Resources - Food: ${country.resources.food}, Oil: ${country.resources.oil}, Tech: ${country.resources.tech}`);
+    }
+    negotiateButton.addEventListener('click', () => {
+        if (selectedCountry) {
+            const targetCountry = prompt("Enter the name of the country you want to negotiate with:").toLowerCase();
+            if (countries[targetCountry] && targetCountry !== selectedCountry) {
+                logAction(`${countries[selectedCountry].name} is negotiating for peace with ${countries[targetCountry].name}.`);
+                // Implement additional negotiation logic here
+            } else {
+                logAction(`Invalid target for negotiation.`);
+            }
+        }
+    });
+    // Add this to the control button event listener
+    controlButton.addEventListener('click', () => {
+        logAction(`${countryName.textContent} is now under your control!`);
+        displayResources(selectedCountry); // Show resources when controlled
+    });
+    
+    buildArmyButton.addEventListener('click', () => {
+        if (selectedCountry) {
+            countries[selectedCountry].troops.infantry += 5;
+            logAction(`${countries[selectedCountry].name} built an army! Infantry: ${countries[selectedCountry].troops.infantry}`);
+            countryDetails.textContent = `Resources: ${countries[selectedCountry].resources}, Infantry: ${countries[selectedCountry].troops.infantry}, Tanks: ${countries[selectedCountry].troops.tanks}, Air Support: ${countries[selectedCountry].troops.airSupport}, Allies: ${countries[selectedCountry].allies.join(', ') || 'None'}`;
+            updateTroopMarkers();
+        }
+    });
+    formAllianceButton.addEventListener('click', () => {
+        if (selectedCountry) {
+            const targetCountry = prompt("Enter the name of the country you want to form an alliance with:").toLowerCase();
+            if (countries[targetCountry] && targetCountry !== selectedCountry) {
+                // Check if they are already allies
+                if (!countries[selectedCountry].allies.includes(targetCountry)) {
+                    countries[selectedCountry].allies.push(targetCountry);
+                    countries[targetCountry].allies.push(selectedCountry); // Form alliance in both directions
+                    logAction(`${countries[selectedCountry].name} has formed an alliance with ${countries[targetCountry].name}!`);
+                } else {
+                    logAction(`${countries[selectedCountry].name} and ${countries[targetCountry].name} are already allies.`);
+                }
+            } else {
+                logAction(`Invalid target for forming an alliance.`);
+            }
+        }
+    });
+    developEconomyButton.addEventListener('click', () => {
+        if (selectedCountry) {
+            // Randomly increase one of the resources
+            const resourceTypes = ['food', 'oil', 'tech'];
+            const resourceToIncrease = resourceTypes[Math.floor(Math.random() * resourceTypes.length)];
+            countries[selectedCountry].resources[resourceToIncrease] += 20; // Increase the selected resource by 20
+            logAction(`${countries[selectedCountry].name} developed their economy! Increased ${resourceToIncrease}: ${countries[selectedCountry].resources[resourceToIncrease]}`);
+            countryDetails.textContent = `Resources: Food: ${countries[selectedCountry].resources.food}, Oil: ${countries[selectedCountry].resources.oil}, Tech: ${countries[selectedCountry].resources.tech}, Infantry: ${countries[selectedCountry].troops.infantry}, Tanks: ${countries[selectedCountry].troops.tanks}, Air Support: ${countries[selectedCountry].troops.airSupport}, Cavalry: ${countries[selectedCountry].troops.cavalry}, Artillery: ${countries[selectedCountry].troops.artillery}, Allies: ${countries[selectedCountry].allies.join(', ') || 'None'}, At War: ${countries[selectedCountry].atWar.join(', ') || 'None'}`;
+        }
+    });
+    
+    negotiateButton.addEventListener('click', () => {
+        if (selectedCountry) {
+            logAction(`${countries[selectedCountry].name} is negotiating for peace!`);
+        }
+    });
+    logAction(`${selectedCountry.name} is moving ${troopsToMove} infantry troops to ${targetCountry.name} through ${terrainFrom}.`, 'move');
+    logAction(`${countries[selectedCountry].name} has declared war on ${countries[targetCountry].name}!`, 'war');
+    logAction(`${countries[selectedCountry].name} has formed an alliance with ${countries[targetCountry].name}!`, 'alliance');
+    updateTroopMarkers(); // Initial troop marker update
+</script>
+</body>
+</html>
